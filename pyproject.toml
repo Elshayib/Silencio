@@ -1,0 +1,28 @@
+[project]
+name = "silencio"
+version = "0.1.0"
+description = "Silencio — live system-wide Vocal isolation (ticket 01: passthrough + gapless toggle)"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.26"]
+
+[project.optional-dependencies]
+audio = ["sounddevice>=0.4"]
+tray = ["pystray>=0.19", "keyboard>=0.13"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+explicit_package_bases = true
+mypy_path = "src"
