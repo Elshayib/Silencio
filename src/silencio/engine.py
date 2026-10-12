@@ -97,8 +97,15 @@ class SilencioEngine:
         WASAPI streams around this call, and that reopen gap masks the
         settle; the gapless ramp requirement applies to toggle flips on a
         live stream, not to device replugs.
+
+        A stateful processor (such as the ticket 02 separator, which is
+        passed directly as a callable with a ``reset`` method) is reset
+        too, so stale buffered audio never smears across the replug.
         """
         self._mix = self._target
+        reset = getattr(self._processor, "reset", None)
+        if callable(reset):
+            reset()
 
     def process_block(self, mixed: Union[NDArray[np.float32], NDArray[np.generic]]) -> Float32Stereo:
         arr = np.asarray(mixed)

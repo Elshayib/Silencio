@@ -1,7 +1,7 @@
 [project]
 name = "silencio"
 version = "0.1.0"
-description = "Silencio — live system-wide Vocal isolation (ticket 01: passthrough + gapless toggle)"
+description = "Silencio — live system-wide Vocal isolation (tickets 01-02: passthrough + gapless toggle + separator engine)"
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.26"]
 

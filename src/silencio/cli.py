@@ -2,6 +2,8 @@
 
 - ``--check`` runs an offline self-check through the tested buffer seam
   (no audio hardware needed) and prints a manual-AB record.
+- ``--clips`` runs the ticket 02 acceptance harness (three clips plus
+  crowd/unison probes) through the same seam and prints PASS/FAIL numbers.
 - ``--run`` starts the live loopback graph (needs VB-Cable + sounddevice).
 - ``--toggle`` flips the persisted global toggle without starting audio.
 - ``--list-devices`` prints PortAudio devices for cable selection.
@@ -23,6 +25,7 @@ from silencio.graph import (
     default_state_path,
     register_hotkey,
 )
+from silencio.harness import format_report, run_acceptance
 
 
 def offline_check() -> int:
@@ -67,6 +70,7 @@ def list_devices() -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="silencio")
     parser.add_argument("--check", action="store_true", help="offline seam check")
+    parser.add_argument("--clips", action="store_true", help="ticket 02 clip harness")
     parser.add_argument("--list-devices", action="store_true")
     parser.add_argument("--run", action="store_true", help="start live graph")
     parser.add_argument("--toggle", action="store_true", help="flip persisted toggle")
@@ -79,6 +83,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.check:
         return offline_check()
+    if args.clips:
+        report = run_acceptance()
+        print(format_report(report))
+        return 0 if report.passed else 1
     if args.list_devices:
         return list_devices()
     if args.toggle:
