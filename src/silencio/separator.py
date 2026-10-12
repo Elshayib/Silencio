@@ -65,13 +65,21 @@ def _one_pole_coeff(tau_seconds: float) -> float:
 class CausalSeparator:
     """Lightweight streaming separator: mixed stereo in, Vocal-plus-SFX stereo out."""
 
-    def __init__(self, sample_rate: int = SAMPLE_RATE, ring_size: int = 32768) -> None:
+    def __init__(
+        self,
+        sample_rate: int = SAMPLE_RATE,
+        ring_size: int = 32768,
+        music_depth: float = 0.75,
+    ) -> None:
         if sample_rate != SAMPLE_RATE:
             raise ValueError(f"v1 supports only {SAMPLE_RATE}Hz, got {sample_rate}")
         if ring_size < 4 * FRAME_SIZE + 8192:
             raise ValueError(f"ring_size must be >= {4 * FRAME_SIZE + 8192}, got {ring_size}")
+        if not 0.0 < music_depth <= 1.0:
+            raise ValueError(f"music_depth must be 0..1, got {music_depth}")
         self._sample_rate = sample_rate
         self._ring_size = int(ring_size)
+        self._music_depth = float(music_depth)
         self._reset_state()
 
     def _reset_state(self) -> None:
@@ -108,6 +116,10 @@ class CausalSeparator:
     @property
     def num_channels(self) -> int:
         return NUM_CHANNELS
+
+    @property
+    def music_depth(self) -> float:
+        return self._music_depth
 
     @property
     def latency_samples(self) -> int:
@@ -237,7 +249,7 @@ class CausalSeparator:
         calm = min(1.0, max(0.0, (0.30 - variation) / 0.18))
         wide = np.clip((width - 0.25) / 0.25, 0.0, 1.0)
         music_bin = np.maximum(wide, sustained * calm)
-        target = 1.0 - 0.75 * music_bin
+        target = 1.0 - self._music_depth * music_bin
         keep = (self._trans_hold > 0)
         self._trans_hold[self._trans_hold > 0] -= 1
         target[keep] = 1.0

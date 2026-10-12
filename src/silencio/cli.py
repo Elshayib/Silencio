@@ -4,6 +4,9 @@
   (no audio hardware needed) and prints a manual-AB record.
 - ``--clips`` runs the ticket 02 acceptance harness (three clips plus
   crowd/unison probes) through the same seam and prints PASS/FAIL numbers.
+- ``--soak`` runs the ticket 04 CPU soak (continuous playback timing
+  plus measured delay) through the same seam; ``--backend`` selects the
+  separator pass and ``--soak-seconds`` sets the length.
 - ``--run`` starts the live loopback graph (needs VB-Cable + sounddevice).
 - ``--toggle`` flips the persisted global toggle without starting audio.
 - ``--list-devices`` prints PortAudio devices for cable selection.
@@ -26,7 +29,7 @@ from silencio.graph import (
     register_hotkey,
 )
 from silencio.harness import format_report, run_acceptance
-from silencio.live import build_live_engine, estimate_end_to_end_ms
+from silencio.live import estimate_end_to_end_ms
 
 
 def offline_check() -> int:
@@ -68,10 +71,31 @@ def list_devices() -> int:
     return 0
 
 
+def run_soak_cli(backend: str, seconds: float) -> int:
+    """Ticket 04 soak through the buffer seam (no hardware needed)."""
+    from silencio.boost import build_boosted_live_engine, describe_accelerator
+    from silencio.soak import SoakConfig, format_soak_report, run_soak
+
+    if backend not in ("auto", "cpu", "gpu"):
+        print(f'backend must be "auto", "cpu" or "gpu", got {backend!r}', file=sys.stderr)
+        return 2
+    report = run_soak(
+        engine_factory=lambda: build_boosted_live_engine(prefer=backend, enabled=True),
+        config=SoakConfig(duration_s=seconds),
+    )
+    print(f"backend: requested={backend} hardware={describe_accelerator()}")
+    print(format_soak_report(report))
+    print("Manual live AB still required: driver jitter, headphone replug, loudness check.")
+    return 0 if report.passed else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="silencio")
     parser.add_argument("--check", action="store_true", help="offline seam check")
     parser.add_argument("--clips", action="store_true", help="ticket 02 clip harness")
+    parser.add_argument("--soak", action="store_true", help="ticket 04 CPU soak")
+    parser.add_argument("--backend", default="auto", help="soak separator pass: auto/cpu/gpu")
+    parser.add_argument("--soak-seconds", type=float, default=30.0)
     parser.add_argument("--list-devices", action="store_true")
     parser.add_argument("--run", action="store_true", help="start live graph")
     parser.add_argument("--toggle", action="store_true", help="flip persisted toggle")
@@ -88,6 +112,8 @@ def main(argv: list[str] | None = None) -> int:
         report = run_acceptance()
         print(format_report(report))
         return 0 if report.passed else 1
+    if args.soak:
+        return run_soak_cli(args.backend, float(args.soak_seconds))
     if args.list_devices:
         return list_devices()
     if args.toggle:
@@ -101,9 +127,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"toggle={'ON' if engine.enabled else 'OFF'} persisted to {state_path}")
         return 0
     if args.run:
-        engine = build_live_engine(state_path=state_path)
+        from silencio.boost import build_boosted_live_engine, describe_accelerator
+
+        engine = build_boosted_live_engine(state_path=state_path, prefer="auto")
         graph = AudioGraph(engine, GraphConfig())
         print(f"starting live Vocal filter (toggle={'ON' if engine.enabled else 'OFF'})")
+        print(f"backend: {describe_accelerator()} (CPU floor, GPU boost when present)")
         print("ON: Vocal plus SFX with Music reduced; OFF: original mix bit-perfect.")
         print(f"latency estimate: {estimate_end_to_end_ms():.1f}ms (budget 150ms)")
         print("local-only: no audio leaves this machine; mic inputs never processed.")
