@@ -26,6 +26,7 @@ from silencio.graph import (
     register_hotkey,
 )
 from silencio.harness import format_report, run_acceptance
+from silencio.live import build_live_engine, estimate_end_to_end_ms
 
 
 def offline_check() -> int:
@@ -100,9 +101,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"toggle={'ON' if engine.enabled else 'OFF'} persisted to {state_path}")
         return 0
     if args.run:
-        engine = build_engine(state_path)
+        engine = build_live_engine(state_path=state_path)
         graph = AudioGraph(engine, GraphConfig())
-        print(f"starting live passthrough (toggle={'ON' if engine.enabled else 'OFF'})")
+        print(f"starting live Vocal filter (toggle={'ON' if engine.enabled else 'OFF'})")
+        print("ON: Vocal plus SFX with Music reduced; OFF: original mix bit-perfect.")
+        print(f"latency estimate: {estimate_end_to_end_ms():.1f}ms (budget 150ms)")
+        print("local-only: no audio leaves this machine; mic inputs never processed.")
         print("Setup: virtual output = Default Playback, exclusive-mode off,")
         print("input = cable loopback (never a microphone), output = real speakers.")
         hotkey_handle = register_hotkey(graph.toggle)

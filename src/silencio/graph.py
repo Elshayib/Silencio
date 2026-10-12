@@ -20,6 +20,7 @@ from typing import Any
 import numpy as np
 
 from silencio.engine import NUM_CHANNELS, SAMPLE_RATE, SilencioEngine
+from silencio.live import ensure_output_only_input, estimate_end_to_end_ms
 from silencio.state import ToggleStateStore
 
 
@@ -45,8 +46,20 @@ class AudioGraph:
         engine: SilencioEngine,
         config: GraphConfig | None = None,
     ) -> None:
+        cfg = config if config is not None else GraphConfig()
+        # Render-path-only scope (ADR-0003): fail fast on mic-like inputs
+        # before any block flows, and keep the live delay inside budget.
+        ensure_output_only_input(cfg.input_device)
+        budget_ms = estimate_end_to_end_ms(
+            block_frames=cfg.block_frames, ramp_samples=engine.ramp_samples
+        )
+        if budget_ms > 150.0:
+            raise ValueError(
+                f"block_frames={cfg.block_frames} estimates {budget_ms:.1f}ms "
+                "end-to-end, over the 150ms budget; use a smaller block."
+            )
         self._engine = engine
-        self._config = config if config is not None else GraphConfig()
+        self._config = cfg
         self._running = False
         self._reopen_needed = False
         self._stream: Any = None
@@ -62,6 +75,13 @@ class AudioGraph:
     @property
     def engine(self) -> SilencioEngine:
         return self._engine
+
+    @property
+    def latency_estimate_ms(self) -> float:
+        return estimate_end_to_end_ms(
+            block_frames=self._config.block_frames,
+            ramp_samples=self._engine.ramp_samples,
+        )
 
     def set_enabled(self, on: bool) -> None:
         self._engine.set_enabled(bool(on))
@@ -94,6 +114,7 @@ class AudioGraph:
                 "sounddevice is not installed (pip install silencio[audio]); "
                 "offline engine checks still run without it."
             ) from exc
+        ensure_output_only_input(self._config.input_device)
         if self._running:
             return
         cfg = self._config
@@ -101,6 +122,10 @@ class AudioGraph:
         def callback(
             indata: np.ndarray, outdata: np.ndarray, frames: int, _time: Any, status: Any
         ) -> None:
+            # Input is the device-rate 48kHz loopback by construction (the
+            # stream opens at SAMPLE_RATE, so the Windows mixer has already
+            # resampled 44.1kHz app output before capture); file-based
+            # 44.1kHz material converts via resample_source_to_pipeline.
             if status:
                 # Dropout logged by PortAudio; keep rendering to avoid a gap.
                 pass
