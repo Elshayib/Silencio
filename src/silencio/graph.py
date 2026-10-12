@@ -19,6 +19,7 @@ from typing import Any
 
 import numpy as np
 
+from silencio.capture import BlockedCaptureMonitor, CaptureStatus
 from silencio.engine import NUM_CHANNELS, SAMPLE_RATE, SilencioEngine
 from silencio.live import ensure_output_only_input, estimate_end_to_end_ms
 from silencio.state import ToggleStateStore
@@ -45,6 +46,7 @@ class AudioGraph:
         self,
         engine: SilencioEngine,
         config: GraphConfig | None = None,
+        capture_monitor: BlockedCaptureMonitor | None = None,
     ) -> None:
         cfg = config if config is not None else GraphConfig()
         # Render-path-only scope (ADR-0003): fail fast on mic-like inputs
@@ -63,6 +65,7 @@ class AudioGraph:
         self._running = False
         self._reopen_needed = False
         self._stream: Any = None
+        self._capture = capture_monitor if capture_monitor is not None else BlockedCaptureMonitor()
 
     @property
     def is_running(self) -> bool:
@@ -83,6 +86,21 @@ class AudioGraph:
             ramp_samples=self._engine.ramp_samples,
         )
 
+    @property
+    def capture_status(self) -> CaptureStatus:
+        return self._capture.status
+
+    def observe_input(self, block: np.ndarray) -> CaptureStatus:
+        """Observe one captured input block for blocked-capture reporting.
+
+        Defensive: never raises on malformed driver blocks; the live path
+        must keep rendering instead of crashing on a known limitation.
+        """
+        try:
+            return self._capture.push(block)
+        except Exception:
+            return self._capture.status
+
     def set_enabled(self, on: bool) -> None:
         self._engine.set_enabled(bool(on))
 
@@ -99,6 +117,7 @@ class AudioGraph:
         flag simply arms the next :meth:`start`.
         """
         self._engine.reset_for_device_change()
+        self._capture.reset()
         self._reopen_needed = True
 
     def reopen(self) -> None:
@@ -138,6 +157,10 @@ class AudioGraph:
                 except ValueError:
                     outdata[:] = np.zeros_like(outdata)
                 return
+            # Blocked-capture reporting (ticket 05): silent loopback from
+            # DRM-protected or exclusive-mode sources is a known
+            # limitation, never a crash; observe and keep rendering.
+            self.observe_input(mixed)
             out = self._engine.process_block(mixed)
             outdata[:] = out
 

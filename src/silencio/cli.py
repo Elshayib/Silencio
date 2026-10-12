@@ -7,6 +7,10 @@
 - ``--soak`` runs the ticket 04 CPU soak (continuous playback timing
   plus measured delay) through the same seam; ``--backend`` selects the
   separator pass and ``--soak-seconds`` sets the length.
+- ``--setup`` prints guided first-run setup (virtual output, Default
+  Playback, exclusive-mode off, reboot, app restart) offline.
+- ``--install-startup`` / ``--remove-startup`` manage auto-start on login.
+- ``--diagnose`` prints toggle, auto-start, latency, and known limitations.
 - ``--run`` starts the live loopback graph (needs VB-Cable + sounddevice).
 - ``--toggle`` flips the persisted global toggle without starting audio.
 - ``--list-devices`` prints PortAudio devices for cable selection.
@@ -89,6 +93,75 @@ def run_soak_cli(backend: str, seconds: float) -> int:
     return 0 if report.passed else 1
 
 
+def _query_device_names() -> list[str] | None:
+    """Best-effort PortAudio device names; None when unavailable offline."""
+    try:
+        import sounddevice as sd
+    except ImportError:
+        return None
+    try:
+        devices = sd.query_devices()
+    except Exception:
+        return None
+    names: list[str] = []
+    try:
+        for entry in devices:
+            if isinstance(entry, dict):
+                name = entry.get("name", "")
+            else:
+                name = getattr(entry, "name", "")
+            names.append(str(name))
+    except Exception:
+        return None
+    return names
+
+
+def run_setup_cli(state_path: Path, startup_entry: Path | None = None) -> int:
+    """Ticket 05 guided first-run setup (offline, no hardware needed)."""
+    from silencio.setup import build_setup_plan, format_setup_plan
+    from silencio.startup import format_startup_status, is_auto_start_enabled, startup_entry_path
+
+    device_names = _query_device_names()
+    plan = build_setup_plan(device_names=device_names)
+    print(format_setup_plan(plan))
+    entry = startup_entry if startup_entry is not None else startup_entry_path()
+    print(format_startup_status(is_auto_start_enabled(entry), entry))
+    print(f"toggle state file: {state_path}")
+    print("input = cable loopback (never a microphone), output = real speakers.")
+    return 0 if plan.passed else 1
+
+
+def run_startup_cli(enabled: bool, startup_entry: Path | None = None) -> int:
+    """Ticket 05 auto-start install/remove (file operation only)."""
+    from silencio.startup import is_auto_start_enabled, set_auto_start, startup_entry_path
+
+    entry = startup_entry if startup_entry is not None else startup_entry_path()
+    path = set_auto_start(bool(enabled), entry=entry)
+    state = "ON" if is_auto_start_enabled(path) else "OFF"
+    action = "installed" if bool(enabled) else "removed"
+    print(f"auto-start {action}: {state} ({path})")
+    return 0
+
+
+def run_diagnose_cli(state_path: Path, startup_entry: Path | None = None) -> int:
+    """Ticket 05 diagnose: toggle, auto-start, latency, known limitations."""
+    from silencio.boost import describe_accelerator
+    from silencio.capture import BLOCKED_MESSAGE
+    from silencio.graph import build_engine
+    from silencio.startup import format_startup_status, is_auto_start_enabled, startup_entry_path
+
+    engine = build_engine(state_path)
+    entry = startup_entry if startup_entry is not None else startup_entry_path()
+    print(f"toggle={'ON' if engine.enabled else 'OFF'} persisted to {state_path}")
+    print(format_startup_status(is_auto_start_enabled(entry), entry))
+    print(f"backend: {describe_accelerator()} (CPU floor, GPU boost when present)")
+    print(f"latency estimate: {estimate_end_to_end_ms():.1f}ms (budget 150ms)")
+    print("local-only: no audio leaves this machine; mic inputs never processed.")
+    print(f"known limitation: {BLOCKED_MESSAGE}")
+    print("device change: unplug/replug recovers without restart (reopen flagged).")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="silencio")
     parser.add_argument("--check", action="store_true", help="offline seam check")
@@ -97,6 +170,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--backend", default="auto", help="soak separator pass: auto/cpu/gpu")
     parser.add_argument("--soak-seconds", type=float, default=30.0)
     parser.add_argument("--list-devices", action="store_true")
+    parser.add_argument("--setup", action="store_true", help="ticket 05 guided first-run setup")
+    parser.add_argument("--diagnose", action="store_true", help="ticket 05 toggle/startup/latency report")
+    parser.add_argument("--install-startup", action="store_true", help="enable auto-start on login")
+    parser.add_argument("--remove-startup", action="store_true", help="disable auto-start on login")
+    parser.add_argument("--startup-path", type=Path, default=None)
     parser.add_argument("--run", action="store_true", help="start live graph")
     parser.add_argument("--toggle", action="store_true", help="flip persisted toggle")
     parser.add_argument("--on", action="store_true")
@@ -105,6 +183,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     state_path = args.state if args.state is not None else default_state_path()
+    startup_path: Path | None = args.startup_path
 
     if args.check:
         return offline_check()
@@ -116,6 +195,14 @@ def main(argv: list[str] | None = None) -> int:
         return run_soak_cli(args.backend, float(args.soak_seconds))
     if args.list_devices:
         return list_devices()
+    if args.setup:
+        return run_setup_cli(state_path, startup_path)
+    if args.diagnose:
+        return run_diagnose_cli(state_path, startup_path)
+    if args.install_startup:
+        return run_startup_cli(True, startup_path)
+    if args.remove_startup:
+        return run_startup_cli(False, startup_path)
     if args.toggle:
         engine = build_engine(state_path)
         engine.set_enabled(not engine.enabled)
