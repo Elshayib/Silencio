@@ -1,5 +1,6 @@
 """Silencio public package."""
 
+from silencio.acceptance import V1Check, V1Config, V1Report, format_v1_report, run_v1_acceptance
 from silencio.boost import (
     CPU_DEPTH,
     GPU_DEPTH,
@@ -36,6 +37,9 @@ __all__ = [
     "SoakReport",
     "StreamingResampler",
     "ToggleStateStore",
+    "V1Check",
+    "V1Config",
+    "V1Report",
     "accelerator_available",
     "build_boosted_live_engine",
     "build_live_engine",
@@ -47,10 +51,12 @@ __all__ = [
     "format_setup_plan",
     "format_soak_report",
     "format_startup_status",
+    "format_v1_report",
     "is_auto_start_enabled",
     "resample_source_to_pipeline",
     "resample_stereo",
     "run_soak",
+    "run_v1_acceptance",
     "set_auto_start",
     "startup_entry_path",
 ]

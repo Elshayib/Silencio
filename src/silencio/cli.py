@@ -7,6 +7,10 @@
 - ``--soak`` runs the ticket 04 CPU soak (continuous playback timing
   plus measured delay) through the same seam; ``--backend`` selects the
   separator pass and ``--soak-seconds`` sets the length.
+- ``--acceptance`` runs the ticket 06 full v1 acceptance (three-clip live
+  AB plus gapless loudness-matched toggle AB plus stability soak with
+  device change) through the same seam; ``--backend`` and
+  ``--soak-seconds`` apply to its soak leg.
 - ``--setup`` prints guided first-run setup (virtual output, Default
   Playback, exclusive-mode off, reboot, app restart) offline.
 - ``--install-startup`` / ``--remove-startup`` manage auto-start on login.
@@ -93,6 +97,20 @@ def run_soak_cli(backend: str, seconds: float) -> int:
     return 0 if report.passed else 1
 
 
+def run_acceptance_cli(backend: str, seconds: float) -> int:
+    """Ticket 06 full v1 acceptance through the buffer seam (no hardware needed)."""
+    from silencio.acceptance import V1Config, format_v1_report, run_v1_acceptance
+    from silencio.boost import describe_accelerator
+
+    if backend not in ("auto", "cpu", "gpu"):
+        print(f'backend must be "auto", "cpu" or "gpu", got {backend!r}', file=sys.stderr)
+        return 2
+    report = run_v1_acceptance(V1Config(backend=backend, soak_seconds=float(seconds)))
+    print(f"backend: requested={backend} hardware={describe_accelerator()}")
+    print(format_v1_report(report))
+    return 0 if report.passed else 1
+
+
 def _query_device_names() -> list[str] | None:
     """Best-effort PortAudio device names; None when unavailable offline."""
     try:
@@ -167,6 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check", action="store_true", help="offline seam check")
     parser.add_argument("--clips", action="store_true", help="ticket 02 clip harness")
     parser.add_argument("--soak", action="store_true", help="ticket 04 CPU soak")
+    parser.add_argument("--acceptance", action="store_true", help="ticket 06 full v1 acceptance")
     parser.add_argument("--backend", default="auto", help="soak separator pass: auto/cpu/gpu")
     parser.add_argument("--soak-seconds", type=float, default=30.0)
     parser.add_argument("--list-devices", action="store_true")
@@ -193,6 +212,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if report.passed else 1
     if args.soak:
         return run_soak_cli(args.backend, float(args.soak_seconds))
+    if args.acceptance:
+        return run_acceptance_cli(args.backend, float(args.soak_seconds))
     if args.list_devices:
         return list_devices()
     if args.setup:
