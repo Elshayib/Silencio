@@ -1,0 +1,22 @@
+[
+  {
+    "profile": "speech",
+    "backend": "DPDFNet baseline ONNX / CPU (stereo speech)",
+    "startup_ms": 336.38,
+    "pipeline_delay_ms": 63.0,
+    "alignment_error_samples": 0,
+    "instrumental_db": -68.52,
+    "recorded_music_db": -45.91,
+    "clean_vocal_level_db": -0.09,
+    "clean_vocal_si_sdr_db": 20.53,
+    "mixture_input_si_sdr_db": -0.25,
+    "mixture_output_si_sdr_db": 5.84,
+    "realtime_factor": 0.475,
+    "block_ms_p50_p95_p99_max": [
+      4.623,
+      5.949,
+      6.801,
+      9.547
+    ]
+  }
+]

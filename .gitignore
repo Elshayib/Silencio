@@ -3,3 +3,9 @@ __pycache__/
 .venv/
 .pytest_cache/
 .mypy_cache/
+build/
+*.egg-info/
+.scratch/pytest-*/
+.scratch/live*.log
+.scratch/speech-evaluation/
+.scratch/wheels/

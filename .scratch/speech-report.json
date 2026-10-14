@@ -1,0 +1,82 @@
+[
+  {
+    "profile": "aggressive",
+    "backend": "CPU spectral processing",
+    "startup_ms": 0.29,
+    "pipeline_delay_ms": 21.333333333333332,
+    "alignment_error_samples": 0,
+    "instrumental_db": -0.34,
+    "recorded_music_db": -6.58,
+    "clean_vocal_level_db": -3.74,
+    "clean_vocal_si_sdr_db": 6.09,
+    "mixture_input_si_sdr_db": -0.25,
+    "mixture_output_si_sdr_db": 0.22,
+    "realtime_factor": 0.116,
+    "block_ms_p50_p95_p99_max": [
+      1.064,
+      1.894,
+      2.463,
+      8.384
+    ]
+  },
+  {
+    "profile": "speech-fast",
+    "backend": "GTCRN ONNX / CPU (stereo speech)",
+    "startup_ms": 446.3,
+    "pipeline_delay_ms": 34.0,
+    "alignment_error_samples": 0,
+    "instrumental_db": -40.25,
+    "recorded_music_db": -44.33,
+    "clean_vocal_level_db": -0.09,
+    "clean_vocal_si_sdr_db": 28.3,
+    "mixture_input_si_sdr_db": -0.25,
+    "mixture_output_si_sdr_db": 2.72,
+    "realtime_factor": 0.223,
+    "block_ms_p50_p95_p99_max": [
+      3.009,
+      4.491,
+      5.459,
+      8.597
+    ]
+  },
+  {
+    "profile": "speech",
+    "backend": "DPDFNet baseline ONNX / CPU (stereo speech)",
+    "startup_ms": 694.71,
+    "pipeline_delay_ms": 62.0,
+    "alignment_error_samples": 0,
+    "instrumental_db": -68.52,
+    "recorded_music_db": -45.91,
+    "clean_vocal_level_db": -0.11,
+    "clean_vocal_si_sdr_db": 19.97,
+    "mixture_input_si_sdr_db": -0.25,
+    "mixture_output_si_sdr_db": 5.84,
+    "realtime_factor": 0.426,
+    "block_ms_p50_p95_p99_max": [
+      4.181,
+      4.745,
+      5.234,
+      6.644
+    ]
+  },
+  {
+    "profile": "speech-quality",
+    "backend": "DPDFNet2 ONNX / CPU (stereo speech)",
+    "startup_ms": 437.59,
+    "pipeline_delay_ms": 62.0,
+    "alignment_error_samples": 0,
+    "instrumental_db": -68.18,
+    "recorded_music_db": -65.95,
+    "clean_vocal_level_db": -0.16,
+    "clean_vocal_si_sdr_db": 20.03,
+    "mixture_input_si_sdr_db": -0.25,
+    "mixture_output_si_sdr_db": 6.37,
+    "realtime_factor": 0.666,
+    "block_ms_p50_p95_p99_max": [
+      6.578,
+      7.313,
+      8.003,
+      9.402
+    ]
+  }
+]

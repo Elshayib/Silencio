@@ -70,6 +70,7 @@ class CausalSeparator:
         sample_rate: int = SAMPLE_RATE,
         ring_size: int = 32768,
         music_depth: float = 0.75,
+        aggressive: bool = False,
     ) -> None:
         if sample_rate != SAMPLE_RATE:
             raise ValueError(f"v1 supports only {SAMPLE_RATE}Hz, got {sample_rate}")
@@ -80,14 +81,19 @@ class CausalSeparator:
         self._sample_rate = sample_rate
         self._ring_size = int(ring_size)
         self._music_depth = float(music_depth)
+        self._aggressive = bool(aggressive)
         self._reset_state()
 
     def _reset_state(self) -> None:
         self._ola = np.zeros((self._ring_size, NUM_CHANNELS), dtype=np.float64)
         self._wsum = np.zeros(self._ring_size, dtype=np.float64)
-        self._inbuf = np.zeros((0, NUM_CHANNELS), dtype=np.float64)
-        self._consumed = 0  # absolute index of _inbuf[0]
-        self._frame_pos = 0  # absolute index of next frame start
+        # Complete the overlapping windows at sample zero. Starting with
+        # one window divides spectral edits by near-zero Hann weights and
+        # can emit a large click after OFF has suspended this processor.
+        prefix = FRAME_SIZE - HOP_SIZE
+        self._inbuf = np.zeros((prefix, NUM_CHANNELS), dtype=np.float64)
+        self._consumed = -prefix  # absolute index of _inbuf[0]
+        self._frame_pos = -prefix  # absolute index of next frame start
         self._fed = 0  # total input samples accepted
         self._prev_mag: NDArray[np.float64] | None = None
         # Per-bin smoothed statistics (fail-open inits: coherent, quiet).
@@ -96,7 +102,7 @@ class CausalSeparator:
         self._slow_p = np.ones(_NBINS, dtype=np.float64) * 1e-6
         self._fast_p = np.ones(_NBINS, dtype=np.float64) * 1e-6
         self._fire_rate = np.zeros(_NBINS, dtype=np.float64)
-        self._gains = np.ones(_NBINS, dtype=np.float64)
+        self._gains = np.zeros(_NBINS, dtype=np.float64) if self._aggressive else np.ones(_NBINS, dtype=np.float64)
         self._trans_hold = np.zeros(_NBINS, dtype=np.int32)
         self._scalar_hold = 0
         self._hops = 0
@@ -250,20 +256,36 @@ class CausalSeparator:
         wide = np.clip((width - 0.25) / 0.25, 0.0, 1.0)
         music_bin = np.maximum(wide, sustained * calm)
         target = 1.0 - self._music_depth * music_bin
+        if self._aggressive:
+            # Suppression-first policy: stereo Music and steady centered tones
+            # are rejected across the full spectrum. Do not reopen the mask
+            # for every drum attack as the Vocal-preserving profile does.
+            wide = np.clip((width - 0.04) / 0.26, 0.0, 1.0)
+            target = (1.0 - wide) ** 3 * (1.0 - sustained * calm) ** 2
         keep = (self._trans_hold > 0)
         self._trans_hold[self._trans_hold > 0] -= 1
-        target[keep] = 1.0
-        if in_transient:
+        if not self._aggressive:
+            target[keep] = 1.0
+        if in_transient and not self._aggressive:
             target[:] = 1.0
             self._bass_gain = 1.0
         rising = target > self._gains
         self._gains[rising] = target[rising]
-        self._gains[~rising] += (target[~rising] - self._gains[~rising]) * 0.05
+        cut_speed = 0.35 if self._aggressive else 0.05
+        self._gains[~rising] += (target[~rising] - self._gains[~rising]) * cut_speed
 
         gains = np.ones_like(mag)
         gains[_SUB_MASK] = self._bass_gain
         gains[_LOW_MASK] = self._gains[_LOW_MASK]
         gains[_MID_MASK] = self._gains[_MID_MASK]
+        if self._aggressive:
+            gains = self._gains.copy()
+            # Accept loss of Vocal bass/brilliance to reduce kick, cymbal and
+            # high instrumental bleed. This is a heuristic, not a learned
+            # source separator; instruments overlapping Vocal can still leak.
+            voice_band = np.clip((_FREQS - 100.0) / 100.0, 0.0, 1.0)
+            voice_band *= np.clip((6000.0 - _FREQS) / 2000.0, 0.0, 1.0)
+            gains *= voice_band
         padded = np.pad(gains, 2, mode="edge")
         gains = np.convolve(padded, np.ones(5) / 5.0, mode="valid")
         self._overlap_add(spec_l, spec_r, gains)
@@ -278,6 +300,13 @@ class CausalSeparator:
     ) -> None:
         out_l = np.fft.irfft(spec_l * gains, FRAME_SIZE) * _WINDOW
         out_r = np.fft.irfft(spec_r * gains, FRAME_SIZE) * _WINDOW
+        if self._frame_pos < 0:
+            skip = -self._frame_pos
+            count = FRAME_SIZE - skip
+            self._ola[:count, 0] += out_l[skip:]
+            self._ola[:count, 1] += out_r[skip:]
+            self._wsum[:count] += _WINDOW_SQ[skip:]
+            return
         base = self._frame_pos % self._ring_size
         if base + FRAME_SIZE <= self._ring_size:
             self._ola[base : base + FRAME_SIZE, 0] += out_l
@@ -307,4 +336,7 @@ class CausalSeparator:
             out[done] = acc[done] / weights[done, None]
             self._ola[idx] = 0.0
             self._wsum[idx] = 0.0
+        if first < HOP_SIZE:
+            fade = np.minimum((first + np.arange(count) + 1) / HOP_SIZE, 1.0)
+            out *= fade[:, None]
         return out

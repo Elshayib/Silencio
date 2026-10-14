@@ -100,22 +100,17 @@ class StreamingResampler:
         incoming = np.asarray(arr, dtype=np.float64)
         self._buf = np.concatenate([self._buf, incoming], axis=0)
         self._fed += int(incoming.shape[0])
-        emitted: list[NDArray[np.float64]] = []
-        while True:
-            rel = self._next - float(self._base)
-            i0 = int(math.floor(rel))
-            frac = rel - float(i0)
-            if i0 < 0:
-                # Cannot happen (base only advances past consumed input),
-                # but guard against float drift by re-basing.
-                i0 = 0
-                frac = 0.0
-            if i0 + 1 >= self._buf.shape[0]:
-                break
-            row = self._buf[i0] * (1.0 - frac) + self._buf[i0 + 1] * frac
-            emitted.append(row)
-            self._next += self._step
-            self._produced += 1
+        # Integer output indices avoid cumulative clock drift. Vectorization
+        # also keeps conversion out of a per-sample Python loop on live audio.
+        available = ((self._fed - 1) * self._dst + self._src - 1) // self._src
+        count = max(0, available - self._produced)
+        times = np.arange(self._produced, self._produced + count, dtype=np.float64) * self._step
+        rel = times - self._base
+        i0 = np.floor(rel).astype(np.int64)
+        frac = (rel - i0)[:, None]
+        emitted = self._buf[i0] * (1.0 - frac) + self._buf[i0 + 1] * frac
+        self._produced += count
+        self._next = self._produced * self._step
         drop = int(math.floor(self._next - float(self._base)))
         if drop > 0:
             # Keep the sample the next output interpolates from.
@@ -123,9 +118,9 @@ class StreamingResampler:
             if drop > 0:
                 self._buf = self._buf[drop:]
                 self._base += drop
-        if not emitted:
+        if count == 0:
             return np.zeros((0, 2), dtype=np.float32)
-        return np.asarray(np.stack(emitted, axis=0), dtype=np.float32)
+        return np.asarray(emitted, dtype=np.float32)
 
     def flush(self) -> Float32Stereo:
         if self._src == self._dst:
@@ -154,3 +149,49 @@ class StreamingResampler:
             self._produced += 1
         self._buf = np.zeros((0, 2), dtype=np.float64)
         return np.asarray(np.stack(rows, axis=0), dtype=np.float32)
+
+
+class BandlimitedResampler:
+    """Causal polyphase sinc conversion for the live speaker path.
+
+    Integer phase tracking keeps arbitrary callback sizes identical. A 65-tap
+    Kaiser window preserves the audible passband and rejects sampling images;
+    the fixed 32-input-sample delay is included in live latency reporting.
+    Equal rates bypass conversion exactly, including at digital silence.
+    """
+
+    def __init__(self, src_rate: int, dst_rate: int) -> None:
+        _check_rate(src_rate)
+        _check_rate(dst_rate)
+        divisor = math.gcd(src_rate, dst_rate)
+        self._up = dst_rate // divisor
+        self._down = src_rate // divisor
+        self.delay_seconds = 0.0 if src_rate == dst_rate else 32 / src_rate
+        self._offsets = np.arange(-64, 1)
+        fractional = np.arange(self._up)[:, None] / self._up
+        cutoff = .94 * min(1.0, dst_rate / src_rate)
+        coefficients = cutoff * np.sinc(cutoff * (fractional - 32 - self._offsets))
+        coefficients *= np.kaiser(65, 8.6)
+        self._coefficients = coefficients / coefficients.sum(axis=1, keepdims=True)
+        self._history = np.zeros((64, 2), np.float32)
+        self._fed = 0
+        self._produced = 0
+
+    def push(self, block: NDArray[np.generic]) -> Float32Stereo:
+        arr = np.asarray(block, dtype=np.float32)
+        if arr.ndim != 2 or arr.shape[1] != 2:
+            raise ValueError(f"expected stereo block (frames, 2), got shape {arr.shape}")
+        if not len(arr) or self._up == self._down:
+            return np.array(arr, dtype=np.float32, copy=True)
+        buffered = np.concatenate((self._history, arr))
+        base = self._fed - len(self._history)
+        self._fed += len(arr)
+        total = (self._fed * self._up + self._down - 1) // self._down
+        phases = np.arange(self._produced, total, dtype=np.int64) * self._down
+        indices = phases // self._up - base
+        windows = buffered[indices[:, None] + self._offsets]
+        coefficients = self._coefficients[phases % self._up]
+        out = np.einsum('ij,ijk->ik', coefficients, windows)
+        self._history = buffered[-64:].copy()
+        self._produced = total
+        return np.asarray(out, dtype=np.float32)

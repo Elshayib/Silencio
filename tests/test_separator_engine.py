@@ -272,3 +272,11 @@ def test_harness_reports_full_acceptance() -> None:
     assert report.passed
     rendered = format_report(report)
     assert "FAIL" not in rendered
+def test_cold_start_mid_playback_has_no_amplified_window_edge():
+    from silencio.clips import make_song_clip
+    from silencio.separator import CausalSeparator
+    source = make_song_clip().mix[2048:2048+4096] * .2
+    processor = CausalSeparator()
+    output = np.concatenate([processor(source[i:i+128]) for i in range(0,len(source),128)])
+    assert np.max(np.abs(np.diff(output,axis=0))) < .06
+    assert np.max(np.abs(output)) < 1

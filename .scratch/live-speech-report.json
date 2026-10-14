@@ -1,0 +1,13 @@
+{
+  "profile": "speech",
+  "latency_ms": 146.0,
+  "processing_ms": 0.932,
+  "max_processing_ms": 14.299,
+  "deadline_misses_added": 0,
+  "underruns_added": 1,
+  "overruns_added": 1,
+  "captured_frames_added": 748800,
+  "peak_observed_input_rms": 0.027359656989574432,
+  "peak_observed_output_rms": 0.02269875444471836,
+  "error": null
+}

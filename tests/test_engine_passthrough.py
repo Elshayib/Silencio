@@ -133,3 +133,32 @@ def test_rejects_non_stereo_blocks() -> None:
         engine.process_block(np.zeros((512,), dtype=np.float32))
     with pytest.raises(ValueError):
         engine.process_block(np.zeros((512, 1), dtype=np.float32))
+
+
+def test_off_suspends_model_and_resuming_clears_stale_audio():
+    class Processor:
+        calls = 0
+        resets = 0
+        def __call__(self, block):
+            self.calls += 1
+            return block.copy()
+        def reset(self):
+            self.resets += 1
+    processor = Processor()
+    engine = SilencioEngine(processor=processor)
+    block = _sine_stereo(4800)
+    for _ in range(5):
+        np.testing.assert_array_equal(engine.process_block(block),block)
+    assert processor.calls == 0
+    engine.set_enabled(True)
+    engine.process_block(block)
+    assert processor.calls == processor.resets == 1
+    engine.set_enabled(False)
+    engine.process_block(block)
+    calls = processor.calls
+    for _ in range(5):
+        np.testing.assert_array_equal(engine.process_block(block),block)
+    assert processor.calls == calls
+    engine.set_enabled(True)
+    engine.process_block(block)
+    assert processor.resets == 2

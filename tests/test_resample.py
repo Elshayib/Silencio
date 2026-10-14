@@ -15,6 +15,31 @@ import pytest
 from silencio.resample import SUPPORTED_RATES, StreamingResampler, resample_stereo
 
 
+@pytest.mark.parametrize('src,dst', [(44100,48000), (48000,44100)])
+def test_live_resampling_preserves_vocal_detail_without_images(src, dst):
+    from silencio.resample import BandlimitedResampler
+    frames = src // 5
+    t = np.arange(frames) / src
+    x = np.column_stack((.3*np.sin(2*np.pi*7000*t), .2*np.sin(2*np.pi*15000*t))).astype(np.float32)
+    converter = BandlimitedResampler(src,dst)
+    y = np.concatenate([converter.push(x[i:i+441]) for i in range(0,len(x),441)])
+    times = np.arange(len(y))/dst - converter.delay_seconds
+    reference = np.column_stack((.3*np.sin(2*np.pi*7000*times),.2*np.sin(2*np.pi*15000*times)))
+    error = np.mean((y[100:] - reference[100:])**2) / np.mean(reference[100:]**2)
+    assert 10*np.log10(error) < -70
+    other = BandlimitedResampler(src,dst)
+    whole = other.push(x)
+    np.testing.assert_array_equal(y,whole)
+
+
+def test_live_resampling_equal_rates_is_bit_perfect():
+    from silencio.resample import BandlimitedResampler
+    x = _sine_44k(4410)
+    converter = BandlimitedResampler(48000,48000)
+    assert converter.delay_seconds == 0
+    np.testing.assert_array_equal(converter.push(x),x)
+
+
 def _sine_44k(frames: int, freq: float = 440.0) -> np.ndarray:
     t = np.arange(frames, dtype=np.float64) / 44100.0
     mono = (0.5 * np.sin(2.0 * np.pi * freq * t)).astype(np.float32)

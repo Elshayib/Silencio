@@ -60,6 +60,7 @@ class SilencioEngine:
         # Crossfade position: 0.0 = full bypass, 1.0 = full processed.
         self._mix: float = 1.0 if initial else 0.0
         self._target: float = 1.0 if initial else 0.0
+        self._processor_suspended = False
 
     @property
     def enabled(self) -> bool:
@@ -80,6 +81,14 @@ class SilencioEngine:
     @property
     def switch_time_ms(self) -> float:
         return float(self._ramp_samples) / float(self._sample_rate) * 1000.0
+
+    @property
+    def latency_samples(self) -> int:
+        return int(getattr(self._processor, "latency_samples", 0))
+
+    @property
+    def backend_name(self) -> str:
+        return str(getattr(self._processor, "backend_name", "CPU spectral processing"))
 
     def set_enabled(self, on: bool) -> None:
         target = 1.0 if bool(on) else 0.0
@@ -106,6 +115,18 @@ class SilencioEngine:
         reset = getattr(self._processor, "reset", None)
         if callable(reset):
             reset()
+        self._processor_suspended = False
+
+    def reload_state(self) -> bool:
+        """Apply external CLI changes from the control thread, without rewriting."""
+        if self._state_store is None:
+            return False
+        enabled = self._state_store.read_enabled()
+        if enabled is None or enabled == self._enabled:
+            return False
+        self._enabled = enabled
+        self._target = 1.0 if enabled else 0.0
+        return True
 
     def process_block(self, mixed: Union[NDArray[np.float32], NDArray[np.generic]]) -> Float32Stereo:
         arr = np.asarray(mixed)
@@ -116,6 +137,16 @@ class SilencioEngine:
         if arr.shape[0] == 0:
             raise ValueError("expected non-empty block")
         bypass = np.asarray(arr, dtype=np.float32)
+        # OFF must remain independent of model cost and model failures. Reset
+        # on the audio thread when resuming so old recurrent audio cannot leak.
+        if self._mix == 0.0 and self._target == 0.0:
+            self._processor_suspended = True
+            return np.array(bypass, dtype=np.float32, copy=True)
+        if self._processor_suspended:
+            reset = getattr(self._processor, "reset", None)
+            if callable(reset):
+                reset()
+            self._processor_suspended = False
         processed = np.asarray(self._processor(bypass), dtype=np.float32)
         if processed.shape != bypass.shape:
             raise ValueError(

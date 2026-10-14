@@ -67,6 +67,8 @@ def build_boosted_live_engine(
     ramp_samples: int = 480,
     prefer: str = "auto",
     enabled: bool | None = None,
+    profile: str = "balanced",
+    speech_strength: float = 2.0,
 ) -> SilencioEngine:
     """Build the live engine, boosting residue reduction on GPU hardware.
 
@@ -79,17 +81,33 @@ def build_boosted_live_engine(
     """
     if prefer not in ("auto", "cpu", "gpu"):
         raise ValueError(f'prefer must be "auto", "cpu" or "gpu", got {prefer!r}')
-    use_boost = prefer == "gpu" or (prefer == "auto" and accelerator_available())
+    if profile not in ("balanced", "aggressive", "speech", "speech-fast", "speech-quality"):
+        raise ValueError('unknown profile: choose balanced, aggressive, speech, speech-fast or speech-quality')
+    use_boost = prefer == "gpu" or (profile == "balanced" and prefer == "auto" and accelerator_available())
     depth = GPU_DEPTH if use_boost else CPU_DEPTH
     store = state_store
     if store is None and state_path is not None:
         store = ToggleStateStore(state_path)
+    from silencio.engine import ProcessorFn
+    processor: ProcessorFn
+    if profile in ("speech", "speech-quality"):
+        from silencio.speech import SpeechSeparator
+        processor = SpeechSeparator(high_quality=profile == "speech-quality")
+    elif profile == "speech-fast":
+        from silencio.speech import FastSpeechSeparator
+        processor = FastSpeechSeparator(strength=speech_strength)
+    else:
+        processor = CausalSeparator(sample_rate=SAMPLE_RATE, music_depth=depth, aggressive=profile == "aggressive")
     engine = SilencioEngine(
-        processor=CausalSeparator(sample_rate=SAMPLE_RATE, music_depth=depth),
+        processor=processor,
         state_store=store,
         sample_rate=SAMPLE_RATE,
         ramp_samples=ramp_samples,
     )
     if enabled is not None:
         engine.set_enabled(bool(enabled))
+    # Initial ON has no preceding live dry stream to crossfade. Settling here
+    # prevents a burst of original Music while the neural pipeline primes.
+    if profile.startswith("speech"):
+        engine.reset_for_device_change()
     return engine
