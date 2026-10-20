@@ -11,3 +11,9 @@ Inno Setup graceful shutdown. Details: `docs/RELEASING.md`.
 
 The updater ships first in 0.2.0-rc.3; older installs need one manual upgrade.
 The existing unsigned RC and hardware validation limitations remain.
+
+Verification: `v0.2.0-rc.3` published through GitHub Actions run 39442898927.
+178 tests, strict mypy and frozen model self-test passed. Public discovery,
+RC/stable channel selection, and actual installer download/hash verification
+passed. No local installation was changed. See the release verification
+history for remaining manual acceptance checks.

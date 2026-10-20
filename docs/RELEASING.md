@@ -116,6 +116,23 @@ The release remains a release candidate until these checks pass.
 
 ## Verification history
 
+### GitHub updater release — 2026-10-20
+
+Tag `v0.2.0-rc.3` completed the public
+[Windows release workflow](https://github.com/Elshayib/Silencio/actions/runs/39442898927).
+All 178 tests passed, strict mypy passed all 30 source files, the frozen
+native/model self-test passed, and Inno Setup built the installer. The workflow
+published the EXE only after verifying its GitHub asset digest.
+
+The actual public update endpoint was checked from the development machine:
+an older RC discovers rc.3, rc.3 reports up to date, and a stable installation
+ignores the prerelease. The updater downloaded the published 75,186,263-byte
+installer and verified SHA-256
+`15ae6748a18a6d2ce974558ab3e1e6a34ee9381648b6f5cf62147de7b47ea2e7`.
+No installer was executed during this download check. The new installer
+handoff has compiled successfully but still needs a manual installed-upgrade
+check; it does not replace the hardware/driver acceptance checks above.
+
 ### Volume repair update — 2026-10-16
 
 `0.2.0-rc.2` adds Windows endpoint volume/mute linking, a final output mute
