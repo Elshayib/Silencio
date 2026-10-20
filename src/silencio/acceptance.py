@@ -339,7 +339,7 @@ def _limitations_check() -> V1Check:
 
 
 def _scope_check() -> V1Check:
-    """Local-only output-only scope holds on the shippable path (ADR-0003)."""
+    """Local audio scope, with the isolated updater exception in ADR-0007."""
     import re
     from pathlib import Path
 
@@ -358,13 +358,15 @@ def _scope_check() -> V1Check:
     scanned = 0
     clean = True
     for path in Path(__file__).parent.glob("*.py"):
+        if path.name == "updates.py":
+            continue  # ADR-0007 permits only metadata/installer networking here.
         scanned += 1
         if pattern.search(path.read_text(encoding="utf-8")) is not None:
             clean = False
     ok = mic_refused and clean and scanned > 0
     return V1Check(
         "local-only output-only scope holds",
-        f"mic input refused, {scanned} modules import no network clients",
+        f"mic input refused, {scanned} non-updater modules import no network clients",
         bool(ok),
     )
 

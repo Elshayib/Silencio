@@ -246,9 +246,7 @@ def test_live_44k_source_resampled_to_pipeline_filters() -> None:
 
 
 def test_live_processing_is_local_only_no_network_imports() -> None:
-    # ADR-0003: no audio leaves the machine. Static guardrail (not a seam
-    # behavior test): the package must not import networking clients; the
-    # separator is numpy-only with no weights and performs no I/O.
+    # ADR-0003/0007: audio remains local; only the updater may use networking.
     import re
     from pathlib import Path
 
@@ -258,6 +256,8 @@ def test_live_processing_is_local_only_no_network_imports() -> None:
         re.MULTILINE,
     )
     for path in (Path(__file__).parent.parent / "src" / "silencio").glob("*.py"):
+        if path.name == "updates.py":
+            continue
         text = path.read_text(encoding="utf-8")
         assert pattern.search(text) is None, f"{path.name} imports a network client"
 

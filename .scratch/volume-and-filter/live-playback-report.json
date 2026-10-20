@@ -1,0 +1,28 @@
+[
+  {
+    "enabled": false,
+    "seconds": 8.0,
+    "latency_ms": 84.7,
+    "peak_processing_ms": 0.1,
+    "peak_input_rms": 0.03652016818523407,
+    "peak_output_rms": 0.03652016818523407,
+    "error": null,
+    "underruns_added": 0,
+    "overruns_added": 0,
+    "deadline_misses_added": 0,
+    "captured_frames_added": 393600
+  },
+  {
+    "enabled": true,
+    "seconds": 8.0,
+    "latency_ms": 147.7,
+    "peak_processing_ms": 4.66,
+    "peak_input_rms": 0.03319263830780983,
+    "peak_output_rms": 0.022779321298003197,
+    "error": null,
+    "underruns_added": 0,
+    "overruns_added": 0,
+    "deadline_misses_added": 0,
+    "captured_frames_added": 393600
+  }
+]

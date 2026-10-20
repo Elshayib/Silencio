@@ -198,3 +198,43 @@ def test_malformed_driver_block_never_bypasses_music(audio):
     assert not out.any()
     assert 'invalid stereo' in graph.last_error
     graph.stop()
+
+
+@pytest.mark.parametrize('wasapi', [False, True])
+@pytest.mark.parametrize('enabled', [False, True])
+def test_output_mute_silences_already_buffered_audio_and_resumes(audio, wasapi, enabled):
+    backend = sys.modules['sounddevice']
+    if wasapi:
+        backend.query_hostapis = lambda: [dict(name='Windows WASAPI')]
+        for i in (0, 1):
+            backend.query_devices(i)['default_samplerate'] = 48000
+        backend.InputStream = backend.Stream
+        backend.OutputStream = backend.Stream
+    engine = SilencioEngine(processor=lambda x: x * .5)
+    engine.set_enabled(enabled)
+    graph = AudioGraph(engine, GraphConfig(block_frames=480, input_device=0, output_device=1))
+    graph.start()
+    block = np.full((480, 2), .2, np.float32)
+    out = np.empty_like(block)
+    def render():
+        if wasapi:
+            audio[0].kwargs['callback'](block, 480, None, None)
+            audio[1].kwargs['callback'](out, 480, None, None)
+        else:
+            audio[0].kwargs['callback'](block, out, 480, None, None)
+    try:
+        for _ in range(5):
+            render()
+        assert np.any(out)
+        graph.set_output_muted(True)
+        render()
+        assert not np.any(out), 'Mute must discard even audio queued before the change'
+        for _ in range(5):
+            render()
+            assert not np.any(out)
+        graph.set_output_muted(False)
+        for _ in range(5):
+            render()
+        np.testing.assert_allclose(out, .1 if enabled else .2, atol=1e-6)
+    finally:
+        graph.stop()

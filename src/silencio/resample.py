@@ -16,6 +16,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 SUPPORTED_RATES: tuple[int, ...] = (44100, 48000)
+DEVICE_RATES: tuple[int, ...] = (44100, 48000, 88200, 96000, 176400, 192000)
 Float32Stereo = NDArray[np.float32]
 
 
@@ -161,8 +162,8 @@ class BandlimitedResampler:
     """
 
     def __init__(self, src_rate: int, dst_rate: int) -> None:
-        _check_rate(src_rate)
-        _check_rate(dst_rate)
+        if src_rate not in DEVICE_RATES or dst_rate not in DEVICE_RATES:
+            raise ValueError(f"unsupported audio device rate: {src_rate} -> {dst_rate}")
         divisor = math.gcd(src_rate, dst_rate)
         self._up = dst_rate // divisor
         self._down = src_rate // divisor

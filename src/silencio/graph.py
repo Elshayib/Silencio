@@ -24,7 +24,7 @@ from silencio.capture import BlockedCaptureMonitor, CaptureStatus
 from silencio.engine import NUM_CHANNELS, SAMPLE_RATE, SilencioEngine
 from silencio.live import ensure_output_only_input
 from silencio.state import ToggleStateStore
-from silencio.resample import SUPPORTED_RATES, BandlimitedResampler
+from silencio.resample import DEVICE_RATES, BandlimitedResampler
 from silencio.playback import PlaybackBridge
 
 
@@ -98,6 +98,7 @@ class AudioGraph:
         self._engine = engine
         self._config = cfg
         self._running = False
+        self._output_muted = False
         self._reopen_needed = False
         self._stream: Any = None
         self.last_error: str | None = None
@@ -150,6 +151,14 @@ class AudioGraph:
 
     def set_enabled(self, on: bool) -> None:
         self._engine.set_enabled(bool(on))
+
+    def set_output_muted(self, muted: bool) -> None:
+        """Final render gate, independent of ON/OFF and already queued audio."""
+        self._output_muted = bool(muted)
+
+    def _gate_output(self, outdata: np.ndarray) -> None:
+        if self._output_muted:
+            outdata.fill(0)
 
     def toggle(self) -> bool:
         self._engine.set_enabled(not self._engine.enabled)
@@ -236,6 +245,7 @@ class AudioGraph:
             # DRM-protected or exclusive-mode sources is a known
             # limitation, never a crash; observe and keep rendering.
             outdata[:] = self._process_audio(mixed)
+            self._gate_output(outdata)
 
         api = sd.query_hostapis()[int(input_info["hostapi"])]
         self._conversion_delay_ms = 0.0
@@ -245,8 +255,8 @@ class AudioGraph:
             # 48kHz capture on a 44.1kHz cable can deliver audio too slowly.
             input_rate = int(input_info["default_samplerate"])
             output_rate = int(output_info["default_samplerate"])
-            if input_rate not in SUPPORTED_RATES or output_rate not in SUPPORTED_RATES:
-                raise ValueError("set virtual cable and speakers to 44100Hz or 48000Hz in Windows Sound")
+            if input_rate not in DEVICE_RATES or output_rate not in DEVICE_RATES:
+                raise ValueError("unsupported device format; choose 44.1, 48, 88.2, 96, 176.4 or 192 kHz in Windows Sound")
             input_frames = round(cfg.block_frames * input_rate / SAMPLE_RATE)
             output_frames = round(cfg.block_frames * output_rate / SAMPLE_RATE)
             to_pipeline = BandlimitedResampler(input_rate, SAMPLE_RATE)
@@ -279,6 +289,7 @@ class AudioGraph:
                     self.underruns += 1
                 previous_underruns = bridge.underruns
                 bridge.render(outdata)
+                self._gate_output(outdata)
                 self.underruns += bridge.underruns - previous_underruns
 
             options = dict(channels=NUM_CHANNELS, dtype="float32", latency=0.01)

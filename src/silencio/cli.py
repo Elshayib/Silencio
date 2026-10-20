@@ -432,14 +432,39 @@ def main(argv: list[str] | None = None) -> int:
             print("hotkey: Ctrl+Alt+M unavailable (pip install .[tray]); use --toggle in another shell.")
         else:
             print("hotkey: Ctrl+Alt+M toggles live.")
+        # The manual CLI uses the same final-device volume link as the desktop.
+        # Other host APIs retain their own mixer behavior.
+        volume_audio = None
+        volume_link = None
+        def close_volume() -> None:
+            try:
+                if volume_link is not None:
+                    volume_link.close()
+            finally:
+                if volume_audio is not None:
+                    volume_audio.close()
         try:
+            import os
+            import sounddevice as sd
+            output_info = sd.query_devices(output_device, "output")
+            if os.name == "nt" and "wasapi" in str(sd.query_hostapis()[output_info['hostapi']]['name']).lower():
+                from silencio.windows_audio import WindowsAudio
+                from silencio.volume import VolumeLink
+                volume_audio = WindowsAudio()
+                endpoints = volume_audio.endpoints()
+                cable = next(device for device in endpoints if device.is_cable)
+                speakers = next(device for device in endpoints if device.name == output_info['name'] and not device.is_virtual)
+                volume_link = VolumeLink(volume_audio, cable.id, speakers.id, graph.set_output_muted,
+                    cable_is_default=volume_audio.default() == cable.id)
             graph.start()
         except RuntimeError as exc:
+            close_volume()
             instance.close()
             unregister_hotkey(hotkey_handle)
             print(str(exc), file=sys.stderr)
             return 2
         except Exception as exc:
+            close_volume()
             instance.close()
             unregister_hotkey(hotkey_handle)
             print(f"could not open audio stream: {exc}", file=sys.stderr)
@@ -455,8 +480,14 @@ def main(argv: list[str] | None = None) -> int:
 
             last_capture = None
             last_error = None
+            status_at = 0.0
             while not quit_requested.is_set():
-                time.sleep(0.5)
+                time.sleep(0.05)
+                if volume_link is not None:
+                    volume_link.poll()
+                if time.monotonic() < status_at:
+                    continue
+                status_at = time.monotonic() + .5
                 if graph.poll():
                     print(f"toggle={'ON' if engine.enabled else 'OFF'} (external control)")
                     if tray is not None:
@@ -481,13 +512,18 @@ def main(argv: list[str] | None = None) -> int:
             pass
         finally:
             try:
-                graph.stop()
-                write_runtime(state_path, dict(running=False, enabled=engine.enabled, profile=args.profile))
+                if volume_link is not None:
+                    volume_link.poll()
             finally:
-                if tray is not None:
-                    tray.stop()
-                unregister_hotkey(hotkey_handle)
-                instance.close()
+                try:
+                    graph.stop()
+                    write_runtime(state_path, dict(running=False, enabled=engine.enabled, profile=args.profile))
+                finally:
+                    close_volume()
+                    if tray is not None:
+                        tray.stop()
+                    unregister_hotkey(hotkey_handle)
+                    instance.close()
         return 0
     parser.print_help()
     return 0

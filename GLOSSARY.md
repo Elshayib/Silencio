@@ -5,13 +5,13 @@ Live system-wide filter that suppresses music and preserves human voice across a
 ## Language
 
 **Vocal**:
-Lead human speech, dialogue, or lead singing to preserve; excludes crowd and choir pads.
+Human speech or singing, including background human voices, to preserve.
 _Avoid_: vocals, voice, speech, dialogue
 
 **Music**:
-Instrumental sound, background score, or human-made crowd, choir pads and backing oohs to suppress.
+Instrumental sound or instrumental background score to suppress; excludes human voices and audience reactions.
 _Avoid_: song, instruments, soundtrack, BGM
 
 **SFX**:
-Non-musical game or film effect to preserve alongside Vocal.
+Non-musical sound to preserve alongside Vocal, including game or film effects, clapping, cheering, and audience ambience.
 _Avoid_: sound effect, game sound

@@ -4,6 +4,11 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 build/
+dist/
+.scratch/release-tools/
+.scratch/release-venv/
+.scratch/release-validation/
+packaging/vendor/vbcable/
 *.egg-info/
 .scratch/pytest-*/
 .scratch/live*.log

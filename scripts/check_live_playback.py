@@ -86,8 +86,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--seconds',type=float,default=16)
     parser.add_argument('--output',type=Path,default=ROOT/'.scratch/live-vocal-quality-report.json')
+    parser.add_argument('--max-underruns', type=int, default=None,
+                        help='fail if either ON or OFF exceeds this dropout count')
     args = parser.parse_args()
     assert 4 <= args.seconds <= 60
     result = check(args.seconds)
     args.output.parent.mkdir(parents=True,exist_ok=True)
     args.output.write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
+    if args.max_underruns is not None:
+        assert all(report['underruns_added'] <= args.max_underruns for report in result), 'Audio underrun limit exceeded'
